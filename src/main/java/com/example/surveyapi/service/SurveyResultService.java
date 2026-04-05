@@ -11,6 +11,7 @@ import com.example.surveyapi.repository.AnswerRepository;
 import com.example.surveyapi.repository.SurveyRepository;
 import com.example.surveyapi.repository.SurveySubmissionRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -33,9 +35,11 @@ public class SurveyResultService {
 
         Map<Long, String> optionNames = buildOptionNameMap(survey);
 
+        long totalResponses = submissionRepository.countBySurveyId(surveyId);
+        log.info("결과 집계 조회: surveyId={}, 총 응답수={}", surveyId, totalResponses);
+
         return new SurveyResultResponse(
-                surveyId, survey.getTitle(),
-                submissionRepository.countBySurveyId(surveyId),
+                surveyId, survey.getTitle(), totalResponses,
                 survey.getQuestions().stream().map(q -> aggregate(q, optionNames)).toList());
     }
 

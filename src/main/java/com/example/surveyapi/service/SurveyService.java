@@ -8,12 +8,14 @@ import com.example.surveyapi.entity.*;
 import com.example.surveyapi.repository.SurveyRepository;
 import com.example.surveyapi.repository.SurveySubmissionRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -24,7 +26,9 @@ public class SurveyService {
 
     @Transactional
     public SurveyResponse createSurvey(CreateSurveyRequest request) {
-        return SurveyResponse.from(surveyRepository.save(request.toEntity()));
+        SurveyResponse response = SurveyResponse.from(surveyRepository.save(request.toEntity()));
+        log.info("설문 생성 완료: id={}, title={}", response.id(), response.title());
+        return response;
     }
 
     public SurveyResponse getSurvey(Long id) {
@@ -45,11 +49,13 @@ public class SurveyService {
         validateActive(survey);
         validateRequiredAnswers(survey, request);
         submissionRepository.save(request.toEntity(survey));
+        log.info("응답 제출 완료: surveyId={}, respondent={}", surveyId, request.respondent());
     }
 
     @Transactional
     public SurveyResponse updateSurveyStatus(Long id, SurveyStatus status) {
         Survey survey = findSurvey(id);
+        log.info("설문 상태 변경: id={}, {} -> {}", id, survey.getStatus(), status);
         survey.updateStatus(status);
         return SurveyResponse.from(survey);
     }
