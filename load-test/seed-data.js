@@ -2,148 +2,113 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+const SURVEY_COUNT = parseInt(__ENV.SURVEY_COUNT || '100');
 
 export const options = {
   vus: 1,
   iterations: 1,
 };
 
-export default function () {
-  const surveys = [
-    {
-      title: '개발자 만족도 조사',
-      description: '개발 환경에 대한 만족도를 조사합니다.',
-      startDate: '2026-04-01',
-      endDate: '2026-12-31',
-      questions: [
-        {
-          content: '사용하는 주 프로그래밍 언어는?',
-          type: 'SINGLE_CHOICE',
-          orderIndex: 1,
-          required: true,
-          options: [
-            { content: 'Java', orderIndex: 1 },
-            { content: 'Python', orderIndex: 2 },
-            { content: 'JavaScript', orderIndex: 3 },
-            { content: 'Go', orderIndex: 4 },
-          ],
-        },
-        {
-          content: '사용 중인 IDE를 모두 선택해주세요',
-          type: 'MULTI_CHOICE',
-          orderIndex: 2,
-          required: true,
-          options: [
-            { content: 'IntelliJ IDEA', orderIndex: 1 },
-            { content: 'VS Code', orderIndex: 2 },
-            { content: 'Eclipse', orderIndex: 3 },
-            { content: 'Vim/Neovim', orderIndex: 4 },
-          ],
-        },
-        {
-          content: '현재 개발 환경에 대한 만족도는?',
-          type: 'RATING',
-          orderIndex: 3,
-          required: true,
-        },
-        {
-          content: '개선 사항이 있다면 자유롭게 작성해주세요',
-          type: 'TEXT',
-          orderIndex: 4,
-          required: false,
-        },
-      ],
-    },
-    {
-      title: '점심 메뉴 선호도 조사',
-      description: '구내식당 메뉴 개선을 위한 조사입니다.',
-      startDate: '2026-04-01',
-      endDate: '2026-12-31',
-      questions: [
-        {
-          content: '선호하는 점심 유형은?',
-          type: 'SINGLE_CHOICE',
-          orderIndex: 1,
-          required: true,
-          options: [
-            { content: '한식', orderIndex: 1 },
-            { content: '중식', orderIndex: 2 },
-            { content: '일식', orderIndex: 3 },
-            { content: '양식', orderIndex: 4 },
-          ],
-        },
-        {
-          content: '식사 만족도를 평가해주세요',
-          type: 'RATING',
-          orderIndex: 2,
-          required: true,
-        },
-      ],
-    },
-    {
-      title: '사내 교육 수요 조사',
-      description: '올해 교육 프로그램 계획을 위한 수요 조사입니다.',
-      startDate: '2026-04-01',
-      endDate: '2026-12-31',
-      questions: [
-        {
-          content: '관심 있는 교육 분야를 모두 선택해주세요',
-          type: 'MULTI_CHOICE',
-          orderIndex: 1,
-          required: true,
-          options: [
-            { content: 'Cloud/DevOps', orderIndex: 1 },
-            { content: 'AI/ML', orderIndex: 2 },
-            { content: '보안', orderIndex: 3 },
-            { content: '리더십', orderIndex: 4 },
-            { content: '커뮤니케이션', orderIndex: 5 },
-          ],
-        },
-        {
-          content: '희망하는 교육 형태는?',
-          type: 'SINGLE_CHOICE',
-          orderIndex: 2,
-          required: true,
-          options: [
-            { content: '온라인 강의', orderIndex: 1 },
-            { content: '오프라인 세미나', orderIndex: 2 },
-            { content: '워크숍', orderIndex: 3 },
-          ],
-        },
-        {
-          content: '기타 요청사항',
-          type: 'TEXT',
-          orderIndex: 3,
-          required: false,
-        },
-      ],
-    },
-  ];
+function buildSurvey(index) {
+  return {
+    title: `부하테스트 설문 #${index}`,
+    description: `부하 테스트를 위해 자동 생성된 설문입니다. (${index}번)`,
+    startDate: '2026-01-01',
+    endDate: '2026-12-31',
+    questions: [
+      {
+        content: `[${index}] 단일 선택 질문`,
+        type: 'SINGLE_CHOICE',
+        orderIndex: 1,
+        required: true,
+        options: Array.from({ length: 5 }, (_, i) => ({
+          content: `선택지 ${i + 1}`,
+          orderIndex: i + 1,
+        })),
+      },
+      {
+        content: `[${index}] 복수 선택 질문`,
+        type: 'MULTI_CHOICE',
+        orderIndex: 2,
+        required: true,
+        options: Array.from({ length: 6 }, (_, i) => ({
+          content: `항목 ${i + 1}`,
+          orderIndex: i + 1,
+        })),
+      },
+      {
+        content: `[${index}] 별점 평가`,
+        type: 'RATING',
+        orderIndex: 3,
+        required: true,
+      },
+      {
+        content: `[${index}] 자유 서술`,
+        type: 'TEXT',
+        orderIndex: 4,
+        required: false,
+      },
+    ],
+  };
+}
 
+export default function () {
   const headers = { 'Content-Type': 'application/json' };
   const createdIds = [];
 
   // 설문 생성
-  for (const survey of surveys) {
-    const res = http.post(`${BASE_URL}/api/surveys`, JSON.stringify(survey), { headers });
-    check(res, { '설문 생성 201': (r) => r.status === 201 });
-
+  for (let i = 1; i <= SURVEY_COUNT; i++) {
+    const res = http.post(`${BASE_URL}/api/surveys`, JSON.stringify(buildSurvey(i)), { headers });
     if (res.status === 201) {
-      const id = JSON.parse(res.body).id;
-      createdIds.push(id);
-      console.log(`설문 생성 완료: id=${id}, title=${survey.title}`);
+      createdIds.push(JSON.parse(res.body).id);
     }
-    sleep(0.2);
+    if (i % 10 === 0) console.log(`설문 생성 진행: ${i}/${SURVEY_COUNT}`);
   }
 
-  // 설문 활성화
+  // 활성화
   for (const id of createdIds) {
-    const res = http.patch(`${BASE_URL}/api/surveys/${id}/status?status=ACTIVE`, null, { headers });
-    check(res, { '상태 변경 200': (r) => r.status === 200 });
-    console.log(`설문 활성화: id=${id}`);
-    sleep(0.1);
+    http.patch(`${BASE_URL}/api/surveys/${id}/status?status=ACTIVE`, null, { headers });
   }
 
-  console.log(`\n시드 데이터 완료. 생성된 설문 ID: [${createdIds.join(', ')}]`);
-  console.log('load-test.js의 SURVEY_IDS를 위 ID로 업데이트하세요.');
+  const RESPONSES_PER_SURVEY = parseInt(__ENV.RESPONSES_PER_SURVEY || '200');
+  console.log(`\n초기 응답 데이터 삽입 시작 (설문당 ${RESPONSES_PER_SURVEY}개)...`);
+  let totalResponses = 0;
+
+  for (const surveyId of createdIds) {
+    const surveyRes = http.get(`${BASE_URL}/api/surveys/${surveyId}`);
+    if (surveyRes.status !== 200) continue;
+
+    const survey = JSON.parse(surveyRes.body);
+
+    for (let r = 0; r < RESPONSES_PER_SURVEY; r++) {
+      const answers = survey.questions.map((q) => {
+        switch (q.type) {
+          case 'SINGLE_CHOICE':
+            return { questionId: q.id, selectedOptionIds: [q.options[Math.floor(Math.random() * q.options.length)].id] };
+          case 'MULTI_CHOICE': {
+            const count = Math.floor(Math.random() * 3) + 1;
+            const shuffled = q.options.sort(() => 0.5 - Math.random());
+            return { questionId: q.id, selectedOptionIds: shuffled.slice(0, count).map((o) => o.id) };
+          }
+          case 'RATING':
+            return { questionId: q.id, textValue: String(Math.floor(Math.random() * 5) + 1) };
+          case 'TEXT':
+            return { questionId: q.id, textValue: `테스트 응답 ${r + 1}` };
+        }
+      });
+
+      http.post(`${BASE_URL}/api/surveys/${surveyId}/responses`,
+        JSON.stringify({ respondent: `seed_user_${r}`, answers }), { headers });
+      totalResponses++;
+    }
+
+    if (createdIds.indexOf(surveyId) % 5 === 4) {
+      console.log(`응답 삽입 진행: ${createdIds.indexOf(surveyId) + 1}/${createdIds.length} 설문 완료`);
+    }
+  }
+
+  console.log(`\n시드 데이터 완료:`);
+  console.log(`  설문: ${createdIds.length}개`);
+  console.log(`  응답: ${totalResponses}개`);
+  console.log(`  설문 ID 범위: ${createdIds[0]} ~ ${createdIds[createdIds.length - 1]}`);
 }

@@ -1,27 +1,37 @@
-# ============================================================
-# 설문조사 API - 메인 설정 파일
-# ============================================================
-
 spring:
   application:
     name: survey-api
 
-  # ----- 데이터소스 설정 -----
   datasource:
     url: jdbc:mysql://localhost:3306/survey_db?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
     username: root
-    password: root
+    password:
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 3000
 
-  # ----- JPA/Hibernate 설정 -----
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
         dialect: org.hibernate.dialect.MySQLDialect
 
 server:
   port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: survey-api

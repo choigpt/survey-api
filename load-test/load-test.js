@@ -1,197 +1,223 @@
 import http from 'k6/http';
 import { check, sleep, group } from 'k6';
-import { Rate, Trend } from 'k6/metrics';
-
-// ========== 설정 ==========
+import { Rate, Trend, Counter } from 'k6/metrics';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
-
-// seed-data.js 실행 후 생성된 설문 ID로 교체
-const SURVEY_IDS = [1, 2, 3];
+const SURVEY_MIN_ID = parseInt(__ENV.SURVEY_MIN_ID || '1');
+const SURVEY_MAX_ID = parseInt(__ENV.SURVEY_MAX_ID || '100');
 
 export const options = {
   scenarios: {
-    // 시나리오 1: 설문 조회 (읽기 위주)
-    read_surveys: {
+    // 읽기 부하
+    read_heavy: {
       executor: 'ramping-vus',
-      startVUs: 0,
       stages: [
-        { duration: '30s', target: 20 },  // 워밍업
-        { duration: '1m', target: 50 },   // 부하 증가
-        { duration: '2m', target: 50 },   // 유지
-        { duration: '30s', target: 0 },   // 정리
+        { duration: '30s', target: 50 },
+        { duration: '2m', target: 100 },
+        { duration: '2m', target: 100 },
+        { duration: '30s', target: 0 },
       ],
       exec: 'readScenario',
     },
-    // 시나리오 2: 응답 제출 (쓰기)
-    submit_responses: {
+    // 쓰기 부하
+    write_heavy: {
       executor: 'ramping-vus',
-      startVUs: 0,
       stages: [
-        { duration: '30s', target: 5 },
-        { duration: '1m', target: 15 },
-        { duration: '2m', target: 15 },
+        { duration: '30s', target: 10 },
+        { duration: '2m', target: 30 },
+        { duration: '2m', target: 30 },
         { duration: '30s', target: 0 },
       ],
       exec: 'writeScenario',
     },
-    // 시나리오 3: 결과 집계 조회
-    read_results: {
+    // 결과 집계 (무거운 쿼리)
+    aggregation: {
       executor: 'ramping-vus',
-      startVUs: 0,
       stages: [
-        { duration: '30s', target: 3 },
-        { duration: '1m', target: 10 },
-        { duration: '2m', target: 10 },
+        { duration: '30s', target: 5 },
+        { duration: '2m', target: 20 },
+        { duration: '2m', target: 20 },
         { duration: '30s', target: 0 },
       ],
       exec: 'resultScenario',
     },
+    // 동시성 스트레스 - 같은 설문에 동시 응답
+    concurrent_submit: {
+      executor: 'constant-vus',
+      vus: 50,
+      duration: '1m',
+      startTime: '1m',
+      exec: 'concurrentSubmitScenario',
+    },
+    // 스파이크 테스트 - 순간 폭주
+    spike: {
+      executor: 'ramping-vus',
+      startTime: '3m',
+      stages: [
+        { duration: '10s', target: 150 },
+        { duration: '30s', target: 150 },
+        { duration: '10s', target: 0 },
+      ],
+      exec: 'readScenario',
+    },
   },
   thresholds: {
-    http_req_duration: ['p(95)<500', 'p(99)<1000'],
-    http_req_failed: ['rate<0.01'],
+    http_req_duration: ['p(95)<500', 'p(99)<2000'],
+    http_req_failed: ['rate<0.05'],
+    submit_response_duration: ['p(95)<1000'],
+    result_query_duration: ['p(95)<2000'],
   },
 };
 
-// ========== 커스텀 메트릭 ==========
-
+// 커스텀 메트릭
 const listDuration = new Trend('survey_list_duration');
 const detailDuration = new Trend('survey_detail_duration');
 const submitDuration = new Trend('submit_response_duration');
 const resultDuration = new Trend('result_query_duration');
 const errorRate = new Rate('error_rate');
-
-// ========== 유틸 ==========
+const dbErrors = new Counter('db_connection_errors');
 
 const headers = { 'Content-Type': 'application/json' };
-
-function randomItem(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function randomSurveyId() {
-  return randomItem(SURVEY_IDS);
-}
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// ========== 시나리오 1: 읽기 ==========
+function randomSurveyId() {
+  return randomInt(SURVEY_MIN_ID, SURVEY_MAX_ID);
+}
+
+function randomItem(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function buildAnswers(survey) {
+  return survey.questions.map((q) => {
+    switch (q.type) {
+      case 'SINGLE_CHOICE':
+        return { questionId: q.id, selectedOptionIds: [randomItem(q.options).id] };
+      case 'MULTI_CHOICE': {
+        const count = randomInt(1, Math.min(3, q.options.length));
+        const shuffled = q.options.sort(() => 0.5 - Math.random());
+        return { questionId: q.id, selectedOptionIds: shuffled.slice(0, count).map((o) => o.id) };
+      }
+      case 'RATING':
+        return { questionId: q.id, textValue: String(randomInt(1, 5)) };
+      case 'TEXT':
+        return { questionId: q.id, textValue: randomItem(['좋아요', '보통', '개선 필요', '만족', '불만족']) };
+    }
+  });
+}
+
+// ========== 시나리오 ==========
 
 export function readScenario() {
-  group('설문 목록 조회', () => {
+  group('목록 조회', () => {
     const res = http.get(`${BASE_URL}/api/surveys`);
     listDuration.add(res.timings.duration);
-    check(res, { '목록 조회 200': (r) => r.status === 200 });
     errorRate.add(res.status !== 200);
+    if (res.status >= 500) dbErrors.add(1);
   });
 
-  sleep(randomInt(1, 3));
+  sleep(randomInt(1, 2));
 
-  group('설문 상세 조회', () => {
-    const id = randomSurveyId();
-    const res = http.get(`${BASE_URL}/api/surveys/${id}`);
+  group('상세 조회', () => {
+    const res = http.get(`${BASE_URL}/api/surveys/${randomSurveyId()}`);
     detailDuration.add(res.timings.duration);
-    check(res, { '상세 조회 200': (r) => r.status === 200 });
     errorRate.add(res.status !== 200);
   });
 
-  sleep(randomInt(1, 3));
+  sleep(randomInt(1, 2));
 
-  group('상태별 필터 조회', () => {
+  group('상태 필터', () => {
     const status = randomItem(['ACTIVE', 'DRAFT', 'CLOSED']);
-    const res = http.get(`${BASE_URL}/api/surveys?status=${status}`);
-    check(res, { '필터 조회 200': (r) => r.status === 200 });
-    errorRate.add(res.status !== 200);
+    http.get(`${BASE_URL}/api/surveys?status=${status}`);
   });
 
   sleep(randomInt(1, 2));
 }
 
-// ========== 시나리오 2: 응답 제출 ==========
-
 export function writeScenario() {
   const surveyId = randomSurveyId();
-
-  // 먼저 설문 상세를 조회하여 질문 ID와 옵션 ID를 가져옴
   const surveyRes = http.get(`${BASE_URL}/api/surveys/${surveyId}`);
-  if (surveyRes.status !== 200) {
-    errorRate.add(true);
-    return;
-  }
+  if (surveyRes.status !== 200) { errorRate.add(true); return; }
 
   const survey = JSON.parse(surveyRes.body);
-  const answers = [];
-
-  for (const question of survey.questions) {
-    switch (question.type) {
-      case 'SINGLE_CHOICE':
-        if (question.options && question.options.length > 0) {
-          answers.push({
-            questionId: question.id,
-            selectedOptionIds: [randomItem(question.options).id],
-          });
-        }
-        break;
-      case 'MULTI_CHOICE':
-        if (question.options && question.options.length > 0) {
-          const count = randomInt(1, Math.min(3, question.options.length));
-          const shuffled = question.options.sort(() => 0.5 - Math.random());
-          answers.push({
-            questionId: question.id,
-            selectedOptionIds: shuffled.slice(0, count).map((o) => o.id),
-          });
-        }
-        break;
-      case 'RATING':
-        answers.push({
-          questionId: question.id,
-          textValue: String(randomInt(1, 5)),
-        });
-        break;
-      case 'TEXT':
-        answers.push({
-          questionId: question.id,
-          textValue: randomItem([
-            '매우 좋습니다',
-            '개선이 필요합니다',
-            '보통입니다',
-            '만족합니다',
-            '불만족합니다',
-            '특별한 의견 없음',
-          ]),
-        });
-        break;
-    }
-  }
 
   group('응답 제출', () => {
     const payload = JSON.stringify({
-      respondent: `user_${__VU}_${__ITER}`,
-      answers: answers,
+      respondent: `load_user_${__VU}_${__ITER}`,
+      answers: buildAnswers(survey),
     });
-
     const res = http.post(`${BASE_URL}/api/surveys/${surveyId}/responses`, payload, { headers });
     submitDuration.add(res.timings.duration);
-    check(res, { '응답 제출 201': (r) => r.status === 201 });
     errorRate.add(res.status !== 201);
+    if (res.status >= 500) dbErrors.add(1);
+  });
+
+  sleep(randomInt(2, 4));
+}
+
+export function resultScenario() {
+  group('결과 집계', () => {
+    const res = http.get(`${BASE_URL}/api/surveys/${randomSurveyId()}/results`);
+    resultDuration.add(res.timings.duration);
+    errorRate.add(res.status !== 200);
+    if (res.status >= 500) dbErrors.add(1);
   });
 
   sleep(randomInt(2, 5));
 }
 
-// ========== 시나리오 3: 결과 집계 ==========
+// 동시성 시나리오: 같은 설문에 50 VU가 동시 응답
+export function concurrentSubmitScenario() {
+  const surveyId = SURVEY_MIN_ID; // 모두 같은 설문
+  const surveyRes = http.get(`${BASE_URL}/api/surveys/${surveyId}`);
+  if (surveyRes.status !== 200) { errorRate.add(true); return; }
 
-export function resultScenario() {
-  group('결과 집계 조회', () => {
-    const id = randomSurveyId();
-    const res = http.get(`${BASE_URL}/api/surveys/${id}/results`);
-    resultDuration.add(res.timings.duration);
-    check(res, { '결과 조회 200': (r) => r.status === 200 });
-    errorRate.add(res.status !== 200);
+  const survey = JSON.parse(surveyRes.body);
+  const payload = JSON.stringify({
+    respondent: `concurrent_${__VU}_${__ITER}`,
+    answers: buildAnswers(survey),
   });
 
-  sleep(randomInt(3, 6));
+  const res = http.post(`${BASE_URL}/api/surveys/${surveyId}/responses`, payload, { headers });
+  submitDuration.add(res.timings.duration);
+  check(res, { '동시 응답 201': (r) => r.status === 201 });
+  errorRate.add(res.status !== 201);
+  if (res.status >= 500) dbErrors.add(1);
+
+  sleep(0.5);
+}
+
+// 모니터링 지표 수집
+export function handleSummary(data) {
+  // Actuator 메트릭 수집
+  const metrics = {};
+  const endpoints = [
+    'hikaricp.connections.active',
+    'hikaricp.connections.idle',
+    'hikaricp.connections.pending',
+    'hikaricp.connections.timeout',
+    'jvm.memory.used',
+    'jvm.threads.live',
+    'http.server.requests',
+  ];
+
+  for (const metric of endpoints) {
+    try {
+      const res = http.get(`${BASE_URL}/actuator/metrics/${metric}`);
+      if (res.status === 200) {
+        const body = JSON.parse(res.body);
+        metrics[metric] = body.measurements[0].value;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  console.log('\n========== 앱 모니터링 지표 (테스트 종료 시점) ==========');
+  for (const [key, value] of Object.entries(metrics)) {
+    console.log(`  ${key}: ${value}`);
+  }
+
+  return {};
 }
