@@ -1,6 +1,7 @@
 package com.example.surveyapi.controller;
 
 import com.example.surveyapi.dto.response.SurveyResponse;
+import com.example.surveyapi.dto.response.SurveySummaryResponse;
 import com.example.surveyapi.entity.SurveyStatus;
 import com.example.surveyapi.service.SurveyResultService;
 import com.example.surveyapi.service.SurveyService;
@@ -8,6 +9,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -36,32 +39,29 @@ class SurveyControllerTest {
     private SurveyResultService surveyResultService;
 
     @Test
-    @DisplayName("GET /api/surveys - 전체 설문 목록을 조회한다")
+    @DisplayName("GET /api/surveys - 페이징된 설문 목록을 조회한다")
     void getAllSurveys() throws Exception {
-        // given
-        SurveyResponse response = new SurveyResponse(
+        SurveySummaryResponse summary = new SurveySummaryResponse(
                 1L, "만족도 조사", "서비스 만족도를 조사합니다.",
                 LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 30),
-                SurveyStatus.ACTIVE, LocalDateTime.now(),
-                Collections.emptyList()
+                SurveyStatus.ACTIVE, LocalDateTime.now()
         );
 
-        given(surveyService.getAllSurveys()).willReturn(List.of(response));
+        given(surveyService.getAllSurveys(any())).willReturn(
+                new PageImpl<>(List.of(summary), PageRequest.of(0, 20), 1));
 
-        // when & then
         mockMvc.perform(get("/api/surveys"))
                 .andDo(print())
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$[0].id").value(1))
-                .andExpect(jsonPath("$[0].title").value("만족도 조사"))
-                .andExpect(jsonPath("$[0].status").value("ACTIVE"));
+                .andExpect(jsonPath("$.content[0].id").value(1))
+                .andExpect(jsonPath("$.content[0].title").value("만족도 조사"))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.size").value(20));
     }
 
     @Test
     @DisplayName("GET /api/surveys/{id} - 설문 상세를 조회한다")
     void getSurvey() throws Exception {
-        // given
         SurveyResponse response = new SurveyResponse(
                 1L, "개발 환경 조사", null,
                 LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 30),
@@ -71,7 +71,6 @@ class SurveyControllerTest {
 
         given(surveyService.getSurvey(1L)).willReturn(response);
 
-        // when & then
         mockMvc.perform(get("/api/surveys/1"))
                 .andDo(print())
                 .andExpect(status().isOk())
@@ -82,7 +81,6 @@ class SurveyControllerTest {
     @Test
     @DisplayName("POST /api/surveys - 설문을 생성한다")
     void createSurvey() throws Exception {
-        // given
         String requestJson = """
                 {
                     "title": "신규 설문",
@@ -113,7 +111,6 @@ class SurveyControllerTest {
 
         given(surveyService.createSurvey(any())).willReturn(response);
 
-        // when & then
         mockMvc.perform(post("/api/surveys")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -126,7 +123,6 @@ class SurveyControllerTest {
     @Test
     @DisplayName("POST /api/surveys - 제목 없이 설문 생성 시 400 에러를 반환한다")
     void createSurvey_ValidationFail() throws Exception {
-        // given
         String invalidJson = """
                 {
                     "description": "제목이 없는 설문",
@@ -143,7 +139,6 @@ class SurveyControllerTest {
                 }
                 """;
 
-        // when & then
         mockMvc.perform(post("/api/surveys")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(invalidJson))
@@ -154,11 +149,9 @@ class SurveyControllerTest {
     @Test
     @DisplayName("GET /api/surveys/{id} - 존재하지 않는 설문 조회 시 400 에러를 반환한다")
     void getSurvey_NotFound() throws Exception {
-        // given
         given(surveyService.getSurvey(999L))
                 .willThrow(new IllegalArgumentException("설문을 찾을 수 없습니다. ID: 999"));
 
-        // when & then
         mockMvc.perform(get("/api/surveys/999"))
                 .andDo(print())
                 .andExpect(status().isBadRequest())

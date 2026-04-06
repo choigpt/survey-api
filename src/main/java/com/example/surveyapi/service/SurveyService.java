@@ -4,15 +4,17 @@ import com.example.surveyapi.dto.request.AnswerRequest;
 import com.example.surveyapi.dto.request.CreateSurveyRequest;
 import com.example.surveyapi.dto.request.SubmitResponseRequest;
 import com.example.surveyapi.dto.response.SurveyResponse;
+import com.example.surveyapi.dto.response.SurveySummaryResponse;
 import com.example.surveyapi.entity.*;
 import com.example.surveyapi.repository.SurveyRepository;
 import com.example.surveyapi.repository.SurveySubmissionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -35,12 +37,12 @@ public class SurveyService {
         return SurveyResponse.from(findSurvey(id));
     }
 
-    public List<SurveyResponse> getAllSurveys() {
-        return surveyRepository.findAll().stream().map(SurveyResponse::from).toList();
+    public Page<SurveySummaryResponse> getAllSurveys(Pageable pageable) {
+        return surveyRepository.findAll(pageable).map(SurveySummaryResponse::from);
     }
 
-    public List<SurveyResponse> getSurveysByStatus(SurveyStatus status) {
-        return surveyRepository.findByStatus(status).stream().map(SurveyResponse::from).toList();
+    public Page<SurveySummaryResponse> getSurveysByStatus(SurveyStatus status, Pageable pageable) {
+        return surveyRepository.findByStatus(status, pageable).map(SurveySummaryResponse::from);
     }
 
     @Transactional

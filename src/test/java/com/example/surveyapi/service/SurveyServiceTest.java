@@ -2,14 +2,20 @@ package com.example.surveyapi.service;
 
 import com.example.surveyapi.dto.request.*;
 import com.example.surveyapi.dto.response.SurveyResponse;
+import com.example.surveyapi.dto.response.SurveySummaryResponse;
 import com.example.surveyapi.entity.*;
 import com.example.surveyapi.repository.SurveyRepository;
+import com.example.surveyapi.repository.SurveySubmissionRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -18,6 +24,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -26,6 +33,9 @@ class SurveyServiceTest {
 
     @Mock
     private SurveyRepository surveyRepository;
+
+    @Mock
+    private SurveySubmissionRepository submissionRepository;
 
     @InjectMocks
     private SurveyService surveyService;
@@ -105,26 +115,33 @@ class SurveyServiceTest {
     }
 
     @Test
-    @DisplayName("전체 설문 목록을 조회할 수 있다")
-    void getAllSurveys_Success() {
-        given(surveyRepository.findAll()).willReturn(List.of(
-                buildSurvey(SurveyStatus.ACTIVE), buildSurvey(SurveyStatus.DRAFT)));
+    @DisplayName("전체 설문 목록을 페이징으로 조회할 수 있다")
+    void getAllSurveys_Paged() {
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Survey> page = new PageImpl<>(
+                List.of(buildSurvey(SurveyStatus.ACTIVE), buildSurvey(SurveyStatus.DRAFT)),
+                pageable, 2);
+        given(surveyRepository.findAll(pageable)).willReturn(page);
 
-        List<SurveyResponse> responses = surveyService.getAllSurveys();
+        Page<SurveySummaryResponse> result = surveyService.getAllSurveys(pageable);
 
-        assertThat(responses).hasSize(2);
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getTotalElements()).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("상태별 설문 목록을 조회할 수 있다")
-    void getSurveysByStatus_Success() {
-        given(surveyRepository.findByStatus(SurveyStatus.ACTIVE))
-                .willReturn(List.of(buildSurvey(SurveyStatus.ACTIVE)));
+    @DisplayName("상태별 설문 목록을 페이징으로 조회할 수 있다")
+    void getSurveysByStatus_Paged() {
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Survey> page = new PageImpl<>(
+                List.of(buildSurvey(SurveyStatus.ACTIVE)),
+                pageable, 1);
+        given(surveyRepository.findByStatus(eq(SurveyStatus.ACTIVE), eq(pageable))).willReturn(page);
 
-        List<SurveyResponse> responses = surveyService.getSurveysByStatus(SurveyStatus.ACTIVE);
+        Page<SurveySummaryResponse> result = surveyService.getSurveysByStatus(SurveyStatus.ACTIVE, pageable);
 
-        assertThat(responses).hasSize(1);
-        assertThat(responses.get(0).status()).isEqualTo(SurveyStatus.ACTIVE);
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).status()).isEqualTo(SurveyStatus.ACTIVE);
     }
 
     private Survey buildSurvey(SurveyStatus status) {

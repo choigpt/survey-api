@@ -4,16 +4,18 @@ import com.example.surveyapi.dto.request.CreateSurveyRequest;
 import com.example.surveyapi.dto.request.SubmitResponseRequest;
 import com.example.surveyapi.dto.response.SurveyResponse;
 import com.example.surveyapi.dto.response.SurveyResultResponse;
+import com.example.surveyapi.dto.response.SurveySummaryResponse;
 import com.example.surveyapi.entity.SurveyStatus;
 import com.example.surveyapi.service.SurveyResultService;
 import com.example.surveyapi.service.SurveyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/surveys")
@@ -34,11 +36,13 @@ public class SurveyController {
     }
 
     @GetMapping
-    public ResponseEntity<List<SurveyResponse>> getAllSurveys(@RequestParam(required = false) SurveyStatus status) {
+    public ResponseEntity<Page<SurveySummaryResponse>> getAllSurveys(
+            @RequestParam(required = false) SurveyStatus status,
+            @PageableDefault(size = 20) Pageable pageable) {
         if (status != null) {
-            return ResponseEntity.ok(surveyService.getSurveysByStatus(status));
+            return ResponseEntity.ok(surveyService.getSurveysByStatus(status, pageable));
         }
-        return ResponseEntity.ok(surveyService.getAllSurveys());
+        return ResponseEntity.ok(surveyService.getAllSurveys(pageable));
     }
 
     @PostMapping("/{surveyId}/responses")

@@ -113,8 +113,9 @@ function buildAnswers(survey) {
 // ========== 시나리오 ==========
 
 export function readScenario() {
-  group('목록 조회', () => {
-    const res = http.get(`${BASE_URL}/api/surveys`);
+  group('목록 조회 (페이징)', () => {
+    const page = randomInt(0, 49);
+    const res = http.get(`${BASE_URL}/api/surveys?page=${page}&size=20`);
     listDuration.add(res.timings.duration);
     errorRate.add(res.status !== 200);
     if (res.status >= 500) dbErrors.add(1);
@@ -130,9 +131,10 @@ export function readScenario() {
 
   sleep(randomInt(1, 2));
 
-  group('상태 필터', () => {
+  group('상태 필터 (페이징)', () => {
     const status = randomItem(['ACTIVE', 'DRAFT', 'CLOSED']);
-    http.get(`${BASE_URL}/api/surveys?status=${status}`);
+    const page = randomInt(0, 10);
+    http.get(`${BASE_URL}/api/surveys?status=${status}&page=${page}&size=20`);
   });
 
   sleep(randomInt(1, 2));

@@ -8,9 +8,9 @@ spring:
     password:
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
-      connection-timeout: 3000
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 5000
 
   jpa:
     hibernate:
@@ -20,9 +20,13 @@ spring:
       hibernate:
         format_sql: false
         dialect: org.hibernate.dialect.MySQLDialect
+        default_batch_fetch_size: 100
 
 server:
   port: 8080
+  tomcat:
+    threads:
+      max: 300
 
 management:
   endpoints:
