@@ -345,10 +345,21 @@ VU를 50 → 100 → 150 → 200 → 300 → 400 → 500으로 단계 증가.
 - 단방향 `@OneToMany @JoinColumn`은 INSERT 후 FK UPDATE가 추가 발생
 - `cascade = ALL`로 부모-자식 전부 순차 INSERT
 
-**개선 방안:**
-- JDBC batch insert 활성화 (`hibernate.jdbc.batch_size`)
-- `@GeneratedValue(IDENTITY)` → `SEQUENCE` 전환 시 배치 가능 (MySQL은 제한적)
-- 대량 쓰기는 JdbcTemplate 벌크 INSERT 고려
+**개선 시도: JdbcTemplate 벌크 INSERT 적용 후 재테스트**
+
+| 지표 | Before (cascade) | After (벌크) |
+|------|---|---|
+| submit p95 | 1,117ms | 1,267ms |
+| submit med | 446ms | 454ms |
+| 처리량 | 84 req/s | 80 req/s |
+| 메모리 | 269MB | 232MB (14% 감소) |
+
+효과 미미. 응답 1건당 Answer 4개로 배치 사이즈가 작아 벌크 이점이 없음.
+**실제 병목은 INSERT 방식이 아니라 트랜잭션당 DB 라운드트립 횟수.**
+
+추가 개선이 필요하면:
+- 비동기 처리 (응답 접수 후 큐잉 → 백그라운드 INSERT)
+- 쓰기 전용 DB 분리 (CQRS)
 
 ## 개선 우선순위
 
