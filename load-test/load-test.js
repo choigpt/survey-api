@@ -1,6 +1,7 @@
 import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
+import { textSummary } from 'https://jslib.k6.io/k6-summary/0.1.0/index.js';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const SURVEY_MIN_ID = parseInt(__ENV.SURVEY_MIN_ID || '1');
@@ -219,5 +220,7 @@ export function handleSummary(data) {
     console.log(`  ${key}: ${value}`);
   }
 
-  return {};
+  return {
+    stdout: textSummary(data, { indent: '  ', enableColors: false }),
+  };
 }
