@@ -40,5 +40,4 @@ out/
 load-test/result-*.txt
 load-test/result-*.json
 
-### Claude Code ###
 .claude/
