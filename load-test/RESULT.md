@@ -174,6 +174,41 @@ CREATE INDEX idx_surveys_status ON surveys (status);
 |------|--------|-------|
 | 실행 방식 | 풀 테이블 스캔 | 풀 스캔 유지 (1,000건이라 옵티마이저가 인덱스보다 풀스캔이 효율적으로 판단) |
 
+## Before vs After 비교 (인덱스 추가 후)
+
+2회 동일 조건으로 테스트. 인덱스만 추가, 커넥션 풀/페이징 등은 미적용.
+
+### Threshold 결과
+
+| 기준 | Before | After |
+|------|--------|-------|
+| http_req_duration p95 < 500ms | FAIL | FAIL |
+| http_req_duration p99 < 2000ms | FAIL | FAIL |
+| submit_response_duration p95 < 1000ms | FAIL | FAIL |
+| result_query_duration p95 < 2000ms | FAIL | FAIL |
+| http_req_failed rate < 5% | PASS | FAIL |
+
+### 모니터링 지표 비교
+
+| 지표 | Before | After | 변화 |
+|------|--------|-------|------|
+| hikaricp.connections.timeout | 226 | 7,722 | 악화 (테스트 3회 누적) |
+| jvm.memory.used | 1,015 MB | 971 MB | 소폭 개선 |
+| jvm.threads.peak | 220 | 221 | 동일 |
+| http.server.requests COUNT | 11,388 | 45,594 | 3회 테스트 누적 |
+| http.server.requests MAX | 8.48s | **13.94s** | 악화 |
+
+### 분석
+
+인덱스 추가로 **집계 쿼리 자체의 cost는 80% 감소**했으나, 전체 부하 테스트 결과는 개선되지 않음.
+
+**근본 원인은 인덱스가 아니라 커넥션 풀 고갈:**
+- 커넥션 20개로 300 VU를 처리할 수 없음
+- 커넥션 대기 → 타임아웃 → 500 에러 → 전체 성능 저하
+- `GET /api/surveys`가 1,000개 설문 전체를 로드하면서 커넥션을 오래 점유
+
+**인덱스 효과는 커넥션 풀/페이징 문제 해결 후에야 체감 가능.**
+
 ## 개선 우선순위
 
 | 순위 | 항목 | 예상 효과 |
