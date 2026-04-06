@@ -262,6 +262,51 @@ CREATE INDEX idx_surveys_status ON surveys (status);
 4. **인덱스**: answers(question_id, selected_option_id), answers(question_id, text_value), surveys(status)
 5. **배치 페칭**: `default_batch_fetch_size=100`
 
+## 추가 테스트 결과
+
+### Breakpoint 테스트 (한계점 탐색)
+
+VU를 50 → 100 → 150 → 200 → 300 → 400 → 500으로 단계 증가.
+
+| 지표 | 값 |
+|------|-----|
+| 최대 VU | 500 |
+| 에러 발생 시점 | ~400VU (i/o timeout 6건) |
+| http_req_duration p95 | 975ms |
+| 처리량 | 344 req/s |
+| 커넥션 타임아웃 | 0 |
+| 스레드 peak | 319 |
+
+**결론:** 시스템 한계점은 약 **400 VU**. Tomcat max-threads(300) 포화가 원인.
+추가 확장이 필요하면 스레드 풀 확대 또는 WebFlux 전환 고려.
+
+### Soak 테스트 (내구성, 10분)
+
+50 VU로 10분간 지속 실행.
+
+| 지표 | 값 |
+|------|-----|
+| http_req_duration p95 | 51ms |
+| 에러율 | 0% |
+| 메모리 (종료 시) | 276MB |
+| GC pause 횟수 | 170 |
+| 커넥션 타임아웃 | 0 |
+
+**결론:** 메모리 누수 없음. 10분간 응답 시간/메모리 안정적. GC도 정상 수준.
+
+### 사용자 시나리오 테스트
+
+실제 사용자 흐름(목록 조회 → 상세 확인 → 응답 제출)을 시뮬레이션. 80 VU, 5분.
+
+| 지표 | 값 | 판정 |
+|------|-----|------|
+| http_req_duration p95 | 54ms | PASS |
+| http_req_failed | 0% | PASS |
+| checks 성공률 | 100% | PASS |
+| 처리량 | 17 req/s | - |
+
+처리량이 낮은 이유는 사용자 think time(2~8초)이 포함되기 때문. 서버 응답 자체는 54ms로 충분히 빠름.
+
 ## 개선 우선순위
 
 | 순위 | 항목 | 예상 효과 |
