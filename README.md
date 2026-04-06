@@ -29,8 +29,8 @@ com.example.surveyapi
 | Method | Endpoint | 설명 |
 |--------|----------|------|
 | `POST` | `/api/surveys` | 설문 생성 (질문 + 선택지 포함) |
-| `GET` | `/api/surveys` | 전체 설문 목록 조회 |
-| `GET` | `/api/surveys?status=ACTIVE` | 상태별 설문 필터링 |
+| `GET` | `/api/surveys?page=0&size=20` | 설문 목록 페이징 조회 |
+| `GET` | `/api/surveys?status=ACTIVE&page=0&size=20` | 상태별 설문 필터링 (페이징) |
 | `GET` | `/api/surveys/{id}` | 설문 상세 조회 |
 | `PATCH` | `/api/surveys/{id}/status?status=ACTIVE` | 설문 상태 변경 |
 | `POST` | `/api/surveys/{id}/responses` | 설문 응답 제출 |
@@ -146,8 +146,8 @@ spring:
 | `submitResponse_NotActive` | DRAFT 설문에 응답 시 예외 |
 | `submitResponse_MissingRequiredAnswer` | 필수 질문 미답변 시 예외 |
 | `updateSurveyStatus_Success` | 상태 변경 정상 동작 |
-| `getAllSurveys_Success` | 전체 목록 조회 |
-| `getSurveysByStatus_Success` | 상태별 필터링 조회 |
+| `getAllSurveys_Paged` | 전체 목록 페이징 조회 |
+| `getSurveysByStatus_Paged` | 상태별 페이징 조회 |
 
 ### SurveyResultServiceTest (단위 테스트, 4개)
 
@@ -162,7 +162,7 @@ spring:
 
 | 테스트 | 검증 내용 |
 |--------|----------|
-| `getAllSurveys` | `GET /api/surveys` 200 응답 + JSON 구조 |
+| `getAllSurveys` | `GET /api/surveys` 페이징 응답 (content, totalElements, size) |
 | `getSurvey` | `GET /api/surveys/{id}` 200 응답 |
 | `createSurvey` | `POST /api/surveys` 201 응답 |
 | `createSurvey_ValidationFail` | 제목 누락 시 400 응답 |
@@ -173,6 +173,63 @@ spring:
 | 테스트 | 검증 내용 |
 |--------|----------|
 | `contextLoads` | Spring 컨텍스트 정상 로드 |
+
+## 성능 최적화
+
+### 커넥션 풀 & 스레드 풀
+
+| 설정 | 기본값 | 변경값 |
+|------|--------|--------|
+| HikariCP max-pool-size | 10 | 50 |
+| HikariCP minimum-idle | 10 | 10 |
+| HikariCP connection-timeout | 30s | 5s |
+| Tomcat max-threads | 200 | 300 |
+
+### 페이징
+
+목록 조회 API(`GET /api/surveys`)는 `Page` 응답을 반환합니다.
+질문/선택지를 제외한 경량 DTO(`SurveySummaryResponse`)를 사용하여 N+1 문제를 방지합니다.
+
+```
+GET /api/surveys?page=0&size=20&status=ACTIVE
+```
+
+```json
+{
+  "content": [...],
+  "totalElements": 1000,
+  "totalPages": 50,
+  "size": 20,
+  "number": 0
+}
+```
+
+상세 조회(`GET /api/surveys/{id}`)는 질문/선택지를 포함한 `SurveyResponse`를 반환합니다.
+
+### 인덱스
+
+```sql
+-- 집계 쿼리 최적화 (Covering index scan, cost 80% 감소)
+CREATE INDEX idx_answers_question_option ON answers (question_id, selected_option_id);
+CREATE INDEX idx_answers_question_text ON answers (question_id, text_value(100));
+CREATE INDEX idx_surveys_status ON surveys (status);
+```
+
+### JPA 배치 페칭
+
+`default_batch_fetch_size: 100` — 상세 조회 시 연관 엔티티를 IN절 배치 로딩하여 N+1 완화.
+
+### 모니터링
+
+Actuator + Prometheus 메트릭 노출:
+
+```
+GET /actuator/health
+GET /actuator/metrics/{metricName}
+GET /actuator/prometheus
+```
+
+주요 모니터링 지표: HikariCP 커넥션 풀, JVM 메모리/스레드, HTTP 요청 통계.
 
 ## ERD
 
