@@ -22,6 +22,9 @@ public class Answer {
     @JoinColumn(name = "question_id", nullable = false)
     private Question question;
 
+    @Column(name = "survey_response_id")
+    private Long surveyResponseId;
+
     private Long selectedOptionId;
 
     @Column(columnDefinition = "TEXT")

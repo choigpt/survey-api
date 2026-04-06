@@ -4,6 +4,7 @@ import com.example.surveyapi.dto.request.*;
 import com.example.surveyapi.dto.response.SurveyResponse;
 import com.example.surveyapi.dto.response.SurveySummaryResponse;
 import com.example.surveyapi.entity.*;
+import com.example.surveyapi.repository.AnswerBulkRepository;
 import com.example.surveyapi.repository.SurveyRepository;
 import com.example.surveyapi.repository.SurveySubmissionRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -36,6 +37,9 @@ class SurveyServiceTest {
 
     @Mock
     private SurveySubmissionRepository submissionRepository;
+
+    @Mock
+    private AnswerBulkRepository answerBulkRepository;
 
     @InjectMocks
     private SurveyService surveyService;

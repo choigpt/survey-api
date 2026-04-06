@@ -72,6 +72,7 @@ class SurveyServiceConcurrencyTest {
                     ));
                     successCount.incrementAndGet();
                 } catch (Exception e) {
+                    System.err.println("Thread " + idx + " failed: " + e.getMessage());
                     failCount.incrementAndGet();
                 } finally {
                     latch.countDown();

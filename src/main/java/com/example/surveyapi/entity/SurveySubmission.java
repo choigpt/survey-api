@@ -6,8 +6,6 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
 @Table(name = "survey_responses")
@@ -29,15 +27,6 @@ public class SurveySubmission {
     @JoinColumn(name = "survey_id", nullable = false)
     private Survey survey;
 
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
-    @JoinColumn(name = "survey_response_id", nullable = false)
-    @Builder.Default
-    private List<Answer> answers = new ArrayList<>();
-
     @CreatedDate
     private LocalDateTime submittedAt;
-
-    public void addAnswer(Answer answer) {
-        this.answers.add(answer);
-    }
 }

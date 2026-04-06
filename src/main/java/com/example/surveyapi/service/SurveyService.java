@@ -6,6 +6,7 @@ import com.example.surveyapi.dto.request.SubmitResponseRequest;
 import com.example.surveyapi.dto.response.SurveyResponse;
 import com.example.surveyapi.dto.response.SurveySummaryResponse;
 import com.example.surveyapi.entity.*;
+import com.example.surveyapi.repository.AnswerBulkRepository;
 import com.example.surveyapi.repository.SurveyRepository;
 import com.example.surveyapi.repository.SurveySubmissionRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class SurveyService {
 
     private final SurveyRepository surveyRepository;
     private final SurveySubmissionRepository submissionRepository;
+    private final AnswerBulkRepository answerBulkRepository;
 
     @Transactional
     public SurveyResponse createSurvey(CreateSurveyRequest request) {
@@ -50,7 +52,9 @@ public class SurveyService {
         Survey survey = findSurvey(surveyId);
         validateActive(survey);
         validateRequiredAnswers(survey, request);
-        submissionRepository.save(request.toEntity(survey));
+
+        SurveySubmission submission = submissionRepository.save(request.toSubmission(survey));
+        answerBulkRepository.saveAll(submission.getId(), request.toAnswers(survey));
         log.info("응답 제출 완료: surveyId={}, respondent={}", surveyId, request.respondent());
     }
 
