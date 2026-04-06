@@ -209,6 +209,59 @@ CREATE INDEX idx_surveys_status ON surveys (status);
 
 **인덱스 효과는 커넥션 풀/페이징 문제 해결 후에야 체감 가능.**
 
+## 최종 결과 (커넥션 풀 확대 + 페이징 + 인덱스 적용 후)
+
+### Threshold 결과
+
+| 기준 | Before | After |
+|------|--------|-------|
+| http_req_duration p95 < 500ms | FAIL | **PASS (365ms)** |
+| http_req_duration p99 < 2000ms | FAIL | **PASS** |
+| submit_response_duration p95 < 1000ms | FAIL | **PASS (490ms)** |
+| result_query_duration p95 < 2000ms | FAIL | **PASS (107ms)** |
+| http_req_failed rate < 5% | FAIL | **PASS (0.00%)** |
+
+### 주요 지표 비교
+
+| 지표 | Before | After | 변화 |
+|------|--------|-------|------|
+| 총 요청 수 | 11,388 | 32,133 | **2.8배 증가** |
+| 처리량 (req/s) | ~39 | 112 | **2.9배 증가** |
+| 에러율 | >5% | 0.00% | 에러 제거 |
+| 커넥션 타임아웃 | 7,722회 | 0회 | 완전 해소 |
+| JVM 메모리 | 1,015 MB | 294 MB | **70% 감소** |
+| 스레드 peak | 221 | 94 | **57% 감소** |
+| 최대 응답 시간 | 13.94s | 884ms | **93% 감소** |
+
+### 엔드포인트별 응답 시간 (p95)
+
+| 엔드포인트 | Before | After |
+|-----------|--------|-------|
+| 목록 조회 (페이징) | 수 초 이상 | **24ms** |
+| 상세 조회 | 수백 ms | **21ms** |
+| 결과 집계 | >2000ms | **107ms** |
+| 응답 제출 | >1000ms | **490ms** |
+
+### 모니터링 지표 (테스트 종료 시점)
+
+| 지표 | 값 |
+|------|-----|
+| hikaricp.connections.active | 0 |
+| hikaricp.connections.idle | 50 |
+| hikaricp.connections.pending | 0 |
+| hikaricp.connections.timeout | 0 |
+| jvm.memory.used | 294 MB |
+| jvm.threads.live | 94 |
+| http.server.requests | 32,140 |
+
+### 적용한 개선 사항
+
+1. **HikariCP**: max-pool-size 20→50, connection-timeout 3s→5s
+2. **Tomcat**: max-threads 200→300
+3. **페이징**: `GET /api/surveys` → `Page<SurveySummaryResponse>` (질문/선택지 미포함)
+4. **인덱스**: answers(question_id, selected_option_id), answers(question_id, text_value), surveys(status)
+5. **배치 페칭**: `default_batch_fetch_size=100`
+
 ## 개선 우선순위
 
 | 순위 | 항목 | 예상 효과 |
