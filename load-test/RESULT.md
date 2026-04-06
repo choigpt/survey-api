@@ -129,6 +129,51 @@ Hibernate가 추가 SELECT를 설문 수만큼 발생시킴 (N+1).
 - 집계 결과 캐싱 (Redis 또는 애플리케이션 레벨)
 - 응답 수가 많은 설문은 비동기 집계로 전환
 
+## 인덱스 분석
+
+### 기존 인덱스
+
+| 테이블 | 인덱스 | 컬럼 | 비고 |
+|--------|--------|------|------|
+| answers | PK | id | - |
+| answers | FK | question_id | JPA 자동 생성 |
+| answers | FK | survey_response_id | JPA 자동 생성 |
+| survey_responses | PK | id | - |
+| survey_responses | FK | survey_id | JPA 자동 생성 |
+| questions | PK, FK | id, survey_id | - |
+| question_options | PK, FK | id, question_id | - |
+| surveys | PK | id | status 인덱스 없음 |
+
+### 추가한 인덱스
+
+```sql
+CREATE INDEX idx_answers_question_option ON answers (question_id, selected_option_id);
+CREATE INDEX idx_answers_question_text ON answers (question_id, text_value(100));
+CREATE INDEX idx_surveys_status ON surveys (status);
+```
+
+### EXPLAIN 비교
+
+**집계 쿼리** (`SELECT selected_option_id, COUNT(*) ... GROUP BY selected_option_id`)
+
+| 항목 | Before | After |
+|------|--------|-------|
+| 실행 방식 | FK 인덱스 → temporary table → GROUP BY | **Covering index scan** |
+| cost | 4,149 | **824 (80% 감소)** |
+| 디스크 접근 | 있음 | 인덱스만으로 처리 |
+
+**텍스트 조회** (`SELECT text_value ... WHERE question_id = ? AND text_value IS NOT NULL`)
+
+| 항목 | Before | After |
+|------|--------|-------|
+| 실행 방식 | FK 인덱스 → 디스크 필터 | 복합 인덱스 사용 |
+
+**상태 필터** (`SELECT * FROM surveys WHERE status = ?`)
+
+| 항목 | Before | After |
+|------|--------|-------|
+| 실행 방식 | 풀 테이블 스캔 | 풀 스캔 유지 (1,000건이라 옵티마이저가 인덱스보다 풀스캔이 효율적으로 판단) |
+
 ## 개선 우선순위
 
 | 순위 | 항목 | 예상 효과 |
