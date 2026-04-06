@@ -1,8 +1,8 @@
 package com.example.surveyapi.dto.request;
 
-import com.example.surveyapi.entity.Answer;
 import com.example.surveyapi.entity.Question;
 import com.example.surveyapi.entity.QuestionType;
+import com.example.surveyapi.repository.AnswerBulkRepository.AnswerRow;
 import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
@@ -12,7 +12,7 @@ public record AnswerRequest(
         List<Long> selectedOptionIds,
         String textValue
 ) {
-    public List<Answer> toAnswers(Question question) {
+    public List<AnswerRow> toAnswerRows(Question question) {
         if (question.getType().isChoiceType()) {
             if (selectedOptionIds == null || selectedOptionIds.isEmpty()) {
                 throw new IllegalArgumentException("선택 질문에 선택지가 필요합니다: " + question.getContent());
@@ -21,9 +21,9 @@ public record AnswerRequest(
                     ? List.of(selectedOptionIds.get(0))
                     : selectedOptionIds;
             return ids.stream()
-                    .map(optionId -> Answer.builder().question(question).selectedOptionId(optionId).build())
+                    .map(optionId -> new AnswerRow(question.getId(), optionId, null))
                     .toList();
         }
-        return List.of(Answer.builder().question(question).textValue(textValue).build());
+        return List.of(new AnswerRow(question.getId(), null, textValue));
     }
 }

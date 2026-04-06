@@ -10,8 +10,6 @@ import lombok.*;
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
-@Builder
 public class Answer {
 
     @Id
@@ -29,4 +27,11 @@ public class Answer {
 
     @Column(columnDefinition = "TEXT")
     private String textValue;
+
+    @Builder
+    private Answer(Question question, Long selectedOptionId, String textValue) {
+        this.question = question;
+        this.selectedOptionId = selectedOptionId;
+        this.textValue = textValue;
+    }
 }

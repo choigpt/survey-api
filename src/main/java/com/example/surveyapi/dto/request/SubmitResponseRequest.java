@@ -1,9 +1,9 @@
 package com.example.surveyapi.dto.request;
 
-import com.example.surveyapi.entity.Answer;
 import com.example.surveyapi.entity.Question;
 import com.example.surveyapi.entity.Survey;
 import com.example.surveyapi.entity.SurveySubmission;
+import com.example.surveyapi.repository.AnswerBulkRepository.AnswerRow;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -24,17 +24,17 @@ public record SubmitResponseRequest(
                 .build();
     }
 
-    public List<Answer> toAnswers(Survey survey) {
+    public List<AnswerRow> toAnswerRows(Survey survey) {
         Map<Long, Question> questionMap = survey.getQuestions().stream()
                 .collect(Collectors.toMap(Question::getId, q -> q));
 
-        List<Answer> result = new ArrayList<>();
+        List<AnswerRow> result = new ArrayList<>();
         for (AnswerRequest ar : answers) {
             Question question = questionMap.get(ar.questionId());
             if (question == null) {
                 throw new IllegalArgumentException("유효하지 않은 질문 ID: " + ar.questionId());
             }
-            result.addAll(ar.toAnswers(question));
+            result.addAll(ar.toAnswerRows(question));
         }
         return result;
     }

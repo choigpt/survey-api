@@ -12,8 +12,6 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
-@Builder
 public class SurveySubmission {
 
     @Id
@@ -29,4 +27,10 @@ public class SurveySubmission {
 
     @CreatedDate
     private LocalDateTime submittedAt;
+
+    @Builder
+    private SurveySubmission(String respondent, Survey survey) {
+        this.respondent = respondent;
+        this.survey = survey;
+    }
 }

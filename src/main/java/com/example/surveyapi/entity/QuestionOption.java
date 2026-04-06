@@ -7,8 +7,6 @@ import lombok.*;
 @Table(name = "question_options")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
-@Builder
 public class QuestionOption {
 
     @Id
@@ -20,4 +18,11 @@ public class QuestionOption {
 
     @Column(nullable = false)
     private Integer orderIndex;
+
+    @Builder
+    private QuestionOption(Long id, String content, Integer orderIndex) {
+        this.id = id;
+        this.content = content;
+        this.orderIndex = orderIndex;
+    }
 }

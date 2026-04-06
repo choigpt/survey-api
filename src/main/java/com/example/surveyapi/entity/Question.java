@@ -10,8 +10,6 @@ import java.util.List;
 @Table(name = "questions")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
-@Builder
 public class Question {
 
     @Id
@@ -33,8 +31,16 @@ public class Question {
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "question_id", nullable = false)
-    @Builder.Default
     private List<QuestionOption> options = new ArrayList<>();
+
+    @Builder
+    private Question(Long id, String content, QuestionType type, Integer orderIndex, Boolean required) {
+        this.id = id;
+        this.content = content;
+        this.type = type;
+        this.orderIndex = orderIndex;
+        this.required = required;
+    }
 
     public void addOption(QuestionOption option) {
         this.options.add(option);

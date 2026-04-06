@@ -17,8 +17,6 @@ import java.util.List;
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
-@Builder
 public class Survey {
 
     @Id
@@ -43,12 +41,21 @@ public class Survey {
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "survey_id", nullable = false)
-    @Builder.Default
     private List<Question> questions = new ArrayList<>();
 
     @CreatedDate
     @Column(updatable = false)
     private LocalDateTime createdAt;
+
+    @Builder
+    private Survey(Long id, String title, String description, LocalDate startDate, LocalDate endDate, SurveyStatus status) {
+        this.id = id;
+        this.title = title;
+        this.description = description;
+        this.startDate = startDate;
+        this.endDate = endDate;
+        this.status = status;
+    }
 
     public void addQuestion(Question question) {
         this.questions.add(question);

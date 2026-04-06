@@ -54,7 +54,7 @@ public class SurveyService {
         validateRequiredAnswers(survey, request);
 
         SurveySubmission submission = submissionRepository.save(request.toSubmission(survey));
-        answerBulkRepository.saveAll(submission.getId(), request.toAnswers(survey));
+        answerBulkRepository.saveAll(submission.getId(), request.toAnswerRows(survey));
         log.info("응답 제출 완료: surveyId={}, respondent={}", surveyId, request.respondent());
     }
 

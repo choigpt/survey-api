@@ -14,8 +14,6 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
-@Builder
 public class SurveyResultSnapshot {
 
     @Id
@@ -33,6 +31,13 @@ public class SurveyResultSnapshot {
 
     @LastModifiedDate
     private LocalDateTime updatedAt;
+
+    @Builder
+    private SurveyResultSnapshot(Long surveyId, Long totalResponses, String resultJson) {
+        this.surveyId = surveyId;
+        this.totalResponses = totalResponses;
+        this.resultJson = resultJson;
+    }
 
     public void update(Long totalResponses, String resultJson) {
         this.totalResponses = totalResponses;
