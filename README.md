@@ -6,22 +6,26 @@ Spring Boot 기반 설문조사 REST API.
 ## 기술 스택
 
 - Java 21, Spring Boot 3.4.3
-- Spring Data JPA, MySQL
+- Spring Data JPA, MySQL, H2 (테스트)
 - Lombok, Jakarta Validation
-- JUnit 5, Mockito
+- Spring Actuator, Micrometer Prometheus
+- JUnit 5, Mockito, k6 (부하 테스트)
 
 ## 프로젝트 구조
 
 ```
 com.example.surveyapi
-├── controller          # REST 컨트롤러
-├── service             # 비즈니스 로직
-├── repository          # 데이터 접근 계층
-├── entity              # JPA 엔티티
+├── controller              # REST 컨트롤러
+├── service                 # 비즈니스 로직
+│   ├── SurveyService       # 설문 CRUD, 응답 제출
+│   ├── SurveyResultService # 결과 집계 (스냅샷 우선 → 실시간 fallback)
+│   └── SurveyResultScheduler # 배치 집계 (60초 주기)
+├── repository              # 데이터 접근 계층
+├── entity                  # JPA 엔티티
 ├── dto
-│   ├── request         # 요청 DTO (record + validation)
-│   └── response        # 응답 DTO (record + 팩토리 메서드)
-└── config              # 설정 (예외 핸들러, JPA Auditing)
+│   ├── request             # 요청 DTO (record + validation + toEntity)
+│   └── response            # 응답 DTO (record + 팩토리 메서드)
+└── config                  # 예외 핸들러, JPA Auditing, 스케줄링
 ```
 
 ## API 명세
@@ -30,8 +34,8 @@ com.example.surveyapi
 |--------|----------|------|
 | `POST` | `/api/surveys` | 설문 생성 (질문 + 선택지 포함) |
 | `GET` | `/api/surveys?page=0&size=20` | 설문 목록 페이징 조회 |
-| `GET` | `/api/surveys?status=ACTIVE&page=0&size=20` | 상태별 설문 필터링 (페이징) |
-| `GET` | `/api/surveys/{id}` | 설문 상세 조회 |
+| `GET` | `/api/surveys?status=ACTIVE&page=0&size=20` | 상태별 필터링 (페이징) |
+| `GET` | `/api/surveys/{id}` | 설문 상세 조회 (질문/선택지 포함) |
 | `PATCH` | `/api/surveys/{id}/status?status=ACTIVE` | 설문 상태 변경 |
 | `POST` | `/api/surveys/{id}/responses` | 설문 응답 제출 |
 | `GET` | `/api/surveys/{id}/results` | 설문 결과 집계 조회 |
@@ -98,28 +102,20 @@ Content-Type: application/json
 
 `DRAFT` -> `ACTIVE` -> `CLOSED`
 
-- `DRAFT`: 초안. 응답 불가.
-- `ACTIVE`: 활성. 응답 가능.
-- `CLOSED`: 마감. 응답 불가.
-
 ## 실행
 
 ### 사전 요구사항
 
 - Java 21
-- MySQL 8 (localhost:3306, DB: `survey_db`)
+- MySQL 8 (localhost:3306)
 
 ### 설정
 
-`src/main/resources/application.yml`에서 DB 접속 정보 수정:
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/survey_db
-    username: root
-    password: root
+```bash
+mysql -u root -e "CREATE DATABASE IF NOT EXISTS survey_db"
 ```
+
+`src/main/resources/application.yml`에서 DB 접속 정보 수정.
 
 ### 빌드 & 실행
 
@@ -135,93 +131,64 @@ spring:
 
 ## 테스트 구성
 
-총 17개 테스트 (단위 테스트 + 슬라이스 테스트)
+### 단위 테스트
 
-### SurveyServiceTest (단위 테스트, 7개)
+| 클래스 | 테스트 수 | 범위 |
+|--------|-----------|------|
+| SurveyServiceTest | 7 | 생성, 조회, 응답 제출, 상태 변경, 페이징 |
+| SurveyResultServiceTest | 5 | 스냅샷 조회, 실시간 집계, 선택형/별점/텍스트 |
+| SurveyControllerTest | 5 | API 엔드포인트, 유효성 검증, 에러 응답 |
+| SurveyServiceConcurrencyTest | 2 | 50스레드 동시 응답, 동시 설문 생성 |
+| SurveyApiApplicationTests | 1 | 컨텍스트 로드 |
 
-| 테스트 | 검증 내용 |
-|--------|----------|
-| `createSurvey_Success` | 설문 생성 시 질문/선택지 함께 저장 |
-| `getSurvey_NotFound` | 없는 설문 조회 시 예외 |
-| `submitResponse_NotActive` | DRAFT 설문에 응답 시 예외 |
-| `submitResponse_MissingRequiredAnswer` | 필수 질문 미답변 시 예외 |
-| `updateSurveyStatus_Success` | 상태 변경 정상 동작 |
-| `getAllSurveys_Paged` | 전체 목록 페이징 조회 |
-| `getSurveysByStatus_Paged` | 상태별 페이징 조회 |
+### 부하 테스트 (k6)
 
-### SurveyResultServiceTest (단위 테스트, 4개)
+| 스크립트 | 목적 | 최대 VU |
+|----------|------|---------|
+| load-test.js | 종합 부하 (읽기/쓰기/집계/동시성/스파이크) | 850 |
+| breakpoint-test.js | 한계점 탐색 (VU 단계 증가) | 500 |
+| soak-test.js | 내구성 (10분 지속) | 50 |
+| user-scenario-test.js | 실제 사용자 흐름 (목록→상세→응답) | 80 |
+| aggregation-stress-test.js | 집계 쿼리 집중 | 50 |
+| write-stress-test.js | 쓰기(INSERT) 집중 | 100 |
 
-| 테스트 | 검증 내용 |
-|--------|----------|
-| `getResults_ChoiceQuestion` | 선택형 질문 옵션별 카운트 집계 |
-| `getResults_RatingQuestion` | 별점 평균 계산 |
-| `getResults_TextQuestion` | 텍스트 응답 목록 반환 |
-| `getResults_NotFound` | 없는 설문 결과 조회 시 예외 |
+```bash
+# 시드 데이터 (설문 1,000개 x 응답 2,000개 = 200만건)
+mysql -u root --default-character-set=utf8mb4 survey_db < load-test/seed-bulk.sql
 
-### SurveyControllerTest (슬라이스 테스트, 5개)
+# 부하 테스트 (Docker)
+docker run --rm -i --add-host=host.docker.internal:host-gateway \
+  -v "%cd%/load-test:/scripts" grafana/k6 \
+  run -e BASE_URL=http://host.docker.internal:8080 /scripts/load-test.js
+```
 
-| 테스트 | 검증 내용 |
-|--------|----------|
-| `getAllSurveys` | `GET /api/surveys` 페이징 응답 (content, totalElements, size) |
-| `getSurvey` | `GET /api/surveys/{id}` 200 응답 |
-| `createSurvey` | `POST /api/surveys` 201 응답 |
-| `createSurvey_ValidationFail` | 제목 누락 시 400 응답 |
-| `getSurvey_NotFound` | 없는 설문 조회 시 400 + 에러 메시지 |
-
-### SurveyApiApplicationTests (통합 테스트, 1개)
-
-| 테스트 | 검증 내용 |
-|--------|----------|
-| `contextLoads` | Spring 컨텍스트 정상 로드 |
+자세한 테스트 결과는 [load-test/RESULT.md](load-test/RESULT.md) 참고.
 
 ## 성능 최적화
 
-### 커넥션 풀 & 스레드 풀
+### 최종 성능 (최적화 전 → 후)
 
-| 설정 | 기본값 | 변경값 |
-|------|--------|--------|
-| HikariCP max-pool-size | 10 | 50 |
-| HikariCP minimum-idle | 10 | 10 |
-| HikariCP connection-timeout | 30s | 5s |
-| Tomcat max-threads | 200 | 300 |
+| 지표 | Before | After |
+|------|--------|-------|
+| 처리량 | 39 req/s | **294 req/s** (7.5배) |
+| 집계 p95 | >2,000ms | **23ms** (99% 감소) |
+| 응답 제출 p95 | >1,000ms | **391ms** (61% 감소) |
+| 에러율 | >5% | **0%** |
+| 메모리 | 1,015MB | **264MB** (74% 감소) |
 
-### 페이징
+### 적용한 최적화
 
-목록 조회 API(`GET /api/surveys`)는 `Page` 응답을 반환합니다.
-질문/선택지를 제외한 경량 DTO(`SurveySummaryResponse`)를 사용하여 N+1 문제를 방지합니다.
-
-```
-GET /api/surveys?page=0&size=20&status=ACTIVE
-```
-
-```json
-{
-  "content": [...],
-  "totalElements": 1000,
-  "totalPages": 50,
-  "size": 20,
-  "number": 0
-}
-```
-
-상세 조회(`GET /api/surveys/{id}`)는 질문/선택지를 포함한 `SurveyResponse`를 반환합니다.
-
-### 인덱스
-
-```sql
--- 집계 쿼리 최적화 (Covering index scan, cost 80% 감소)
-CREATE INDEX idx_answers_question_option ON answers (question_id, selected_option_id);
-CREATE INDEX idx_answers_question_text ON answers (question_id, text_value(100));
-CREATE INDEX idx_surveys_status ON surveys (status);
-```
-
-### JPA 배치 페칭
-
-`default_batch_fetch_size: 100` — 상세 조회 시 연관 엔티티를 IN절 배치 로딩하여 N+1 완화.
+| 항목 | 내용 |
+|------|------|
+| 커넥션 풀 | HikariCP max-pool-size 50, connection-timeout 5s |
+| 스레드 풀 | Tomcat max-threads 300 |
+| 페이징 | 목록 조회 `Page<SurveySummaryResponse>` (질문/선택지 미포함) |
+| 인덱스 | `answers(question_id, selected_option_id)`, `answers(question_id, text_value)`, `surveys(status)` |
+| 배치 집계 | 60초 주기 스냅샷 저장 → 조회 시 JSON 1건 SELECT |
+| 벌크 INSERT | JdbcTemplate batchUpdate + rewriteBatchedStatements |
+| N+1 완화 | `default_batch_fetch_size: 100` |
 
 ### 모니터링
-
-Actuator + Prometheus 메트릭 노출:
 
 ```
 GET /actuator/health
@@ -229,11 +196,12 @@ GET /actuator/metrics/{metricName}
 GET /actuator/prometheus
 ```
 
-주요 모니터링 지표: HikariCP 커넥션 풀, JVM 메모리/스레드, HTTP 요청 통계.
+주요 지표: HikariCP 커넥션 풀, JVM 메모리/스레드, HTTP 요청 통계.
 
 ## ERD
 
 ```
 surveys 1──N questions 1──N question_options
 surveys 1──N survey_responses 1──N answers N──1 questions
+surveys 1──1 survey_result_snapshots
 ```

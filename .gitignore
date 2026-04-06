@@ -35,3 +35,10 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Load test results ###
+load-test/result-*.txt
+load-test/result-*.json
+
+### Claude Code ###
+.claude/
