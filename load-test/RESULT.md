@@ -307,6 +307,49 @@ VU를 50 → 100 → 150 → 200 → 300 → 400 → 500으로 단계 증가.
 
 처리량이 낮은 이유는 사용자 think time(2~8초)이 포함되기 때문. 서버 응답 자체는 54ms로 충분히 빠름.
 
+### 대용량 집계 스트레스 테스트
+
+설문 1개(응답 2,000건, 답변 8,000건)에 50VU가 집계 API만 집중 호출.
+
+| 지표 | 값 | 판정 |
+|------|-----|------|
+| http_req_duration p95 | 995ms | PASS (기준 2,000ms) |
+| http_req_failed | 0% | PASS |
+| result_query_duration med | 626ms | - |
+| 처리량 | 31 req/s | - |
+| 데이터 전송 | 937MB 수신 | 응답 페이로드 큼 |
+| 커넥션 타임아웃 | 0 | - |
+
+**결론:** 응답 2,000건 규모에서는 50VU 동시 집계 가능. p95=995ms로 기준 내.
+응답이 10,000건 이상으로 늘어나면 캐싱(Redis) 도입 필요.
+
+### 쓰기 집중 스트레스 테스트
+
+읽기 없이 응답 제출(INSERT)만 100VU로 집중.
+
+| 지표 | 값 | 판정 |
+|------|-----|------|
+| http_req_duration p95 | **1,117ms** | **FAIL** (기준 1,000ms) |
+| http_req_failed | 0% | PASS |
+| submit_duration med | 446ms | - |
+| 처리량 | **84 req/s** | - |
+| 총 INSERT | 17,353건 / 3분 | - |
+| 커넥션 타임아웃 | 0 | - |
+| 메모리 | 269MB | 안정 |
+
+**결론:** 100VU 쓰기 집중 시 p95=1.1초로 threshold 초과.
+에러는 0%이므로 데이터 유실은 없으나 **INSERT 병목** 존재.
+
+**쓰기 병목 원인:**
+- `SurveySubmission` + 다수의 `Answer` INSERT가 하나의 트랜잭션
+- 단방향 `@OneToMany @JoinColumn`은 INSERT 후 FK UPDATE가 추가 발생
+- `cascade = ALL`로 부모-자식 전부 순차 INSERT
+
+**개선 방안:**
+- JDBC batch insert 활성화 (`hibernate.jdbc.batch_size`)
+- `@GeneratedValue(IDENTITY)` → `SEQUENCE` 전환 시 배치 가능 (MySQL은 제한적)
+- 대량 쓰기는 JdbcTemplate 벌크 INSERT 고려
+
 ## 개선 우선순위
 
 | 순위 | 항목 | 예상 효과 |
