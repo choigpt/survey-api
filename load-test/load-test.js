@@ -13,9 +13,9 @@ export const options = {
     read_heavy: {
       executor: 'ramping-vus',
       stages: [
-        { duration: '30s', target: 50 },
-        { duration: '2m', target: 100 },
-        { duration: '2m', target: 100 },
+        { duration: '30s', target: 100 },
+        { duration: '2m', target: 300 },
+        { duration: '3m', target: 300 },
         { duration: '30s', target: 0 },
       ],
       exec: 'readScenario',
@@ -24,20 +24,20 @@ export const options = {
     write_heavy: {
       executor: 'ramping-vus',
       stages: [
-        { duration: '30s', target: 10 },
-        { duration: '2m', target: 30 },
-        { duration: '2m', target: 30 },
+        { duration: '30s', target: 30 },
+        { duration: '2m', target: 100 },
+        { duration: '3m', target: 100 },
         { duration: '30s', target: 0 },
       ],
       exec: 'writeScenario',
     },
-    // 결과 집계 (무거운 쿼리)
+    // 결과 집계
     aggregation: {
       executor: 'ramping-vus',
       stages: [
-        { duration: '30s', target: 5 },
-        { duration: '2m', target: 20 },
-        { duration: '2m', target: 20 },
+        { duration: '30s', target: 10 },
+        { duration: '2m', target: 50 },
+        { duration: '3m', target: 50 },
         { duration: '30s', target: 0 },
       ],
       exec: 'resultScenario',
@@ -45,18 +45,18 @@ export const options = {
     // 동시성 스트레스 - 같은 설문에 동시 응답
     concurrent_submit: {
       executor: 'constant-vus',
-      vus: 50,
-      duration: '1m',
+      vus: 100,
+      duration: '2m',
       startTime: '1m',
       exec: 'concurrentSubmitScenario',
     },
     // 스파이크 테스트 - 순간 폭주
     spike: {
       executor: 'ramping-vus',
-      startTime: '3m',
+      startTime: '4m',
       stages: [
-        { duration: '10s', target: 150 },
-        { duration: '30s', target: 150 },
+        { duration: '10s', target: 400 },
+        { duration: '30s', target: 400 },
         { duration: '10s', target: 0 },
       ],
       exec: 'readScenario',
