@@ -3,13 +3,12 @@ package com.example.surveyapi.service;
 import com.example.surveyapi.dto.response.OptionCountResponse;
 import com.example.surveyapi.dto.response.QuestionResultResponse;
 import com.example.surveyapi.dto.response.SurveyResultResponse;
-import com.example.surveyapi.entity.Question;
-import com.example.surveyapi.entity.QuestionOption;
-import com.example.surveyapi.entity.QuestionType;
-import com.example.surveyapi.entity.Survey;
+import com.example.surveyapi.entity.*;
 import com.example.surveyapi.repository.AnswerRepository;
 import com.example.surveyapi.repository.SurveyRepository;
+import com.example.surveyapi.repository.SurveyResultSnapshotRepository;
 import com.example.surveyapi.repository.SurveySubmissionRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,20 +26,38 @@ public class SurveyResultService {
 
     private final SurveyRepository surveyRepository;
     private final SurveySubmissionRepository submissionRepository;
+    private final SurveyResultSnapshotRepository snapshotRepository;
     private final AnswerRepository answerRepository;
+    private final ObjectMapper objectMapper;
 
     public SurveyResultResponse getResults(Long surveyId) {
+        return snapshotRepository.findBySurveyId(surveyId)
+                .map(this::fromSnapshot)
+                .orElseGet(() -> aggregateLive(surveyId));
+    }
+
+    public SurveyResultResponse aggregateLive(Long surveyId) {
         Survey survey = surveyRepository.findById(surveyId)
                 .orElseThrow(() -> new IllegalArgumentException("설문을 찾을 수 없습니다. ID: " + surveyId));
 
         Map<Long, String> optionNames = buildOptionNameMap(survey);
-
         long totalResponses = submissionRepository.countBySurveyId(surveyId);
-        log.info("결과 집계 조회: surveyId={}, 총 응답수={}", surveyId, totalResponses);
+
+        log.info("실시간 집계: surveyId={}, 총 응답수={}", surveyId, totalResponses);
 
         return new SurveyResultResponse(
                 surveyId, survey.getTitle(), totalResponses,
                 survey.getQuestions().stream().map(q -> aggregate(q, optionNames)).toList());
+    }
+
+    private SurveyResultResponse fromSnapshot(SurveyResultSnapshot snapshot) {
+        try {
+            log.debug("스냅샷 조회: surveyId={}", snapshot.getSurveyId());
+            return objectMapper.readValue(snapshot.getResultJson(), SurveyResultResponse.class);
+        } catch (Exception e) {
+            log.warn("스냅샷 파싱 실패, 실시간 집계로 전환: surveyId={}", snapshot.getSurveyId());
+            return aggregateLive(snapshot.getSurveyId());
+        }
     }
 
     private Map<Long, String> buildOptionNameMap(Survey survey) {
